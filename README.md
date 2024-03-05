@@ -1,1 +1,1 @@
-# bedrock_assistant_hacs
+# Amazon Bedrock Conversation Agent for HACS
