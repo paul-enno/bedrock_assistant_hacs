@@ -1,16 +1,4 @@
----
-title: Amazon Bedrock Integration
-description: Instructions on how to integrate Amazon Bedrock with Home Assistant.
-ha_category:
-  - Notifications
-ha_iot_class: Cloud Push
-ha_config_flow: true
-ha_release: '2024.4'
-ha_domain: bedrock_agent
-ha_codeowners:
-  - '@paul-enno'
-ha_integration_type: service
----
+# Amazon Bedrock Conversation Agent Integration
 
 The `bedrock_agent` integration makes it possible to add conversation agents powered by leading foundation models to Home Assistant through [Amazon Bedrock](https://aws.amazon.com/bedrock).
 
