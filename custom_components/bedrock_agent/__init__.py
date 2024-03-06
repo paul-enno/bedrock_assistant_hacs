@@ -67,11 +67,7 @@ class BedrockAgent(conversation.AbstractConversationAgent):
     async def async_call_bedrock(self, question) -> str:
         """Return result from Amazon Bedrock."""
 
-        # amazon.titan-text-express-v1
-        # anthropic.claude
-        # ai21.j2
-        # mistral.mistral-
-        # meta.llama2-
+        question = "Provide me a short answer to the following question: " + question
 
         modelId = self.entry.data[CONST_MODEL_ID]
         body = json.dumps({"prompt": question})
@@ -92,7 +88,7 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             body = json.dumps(
                 {
                     "prompt": f"\n\nHuman:{question}\n\nAssistant:",
-                    "max_tokens_to_sample": 300,
+                    "max_tokens_to_sample": 200,
                     "temperature": 0.1,
                     "top_p": 0.9,
                 }
@@ -119,9 +115,6 @@ class BedrockAgent(conversation.AbstractConversationAgent):
                     "top_k": 50,
                 }
             )
-        #     return "ai21.j2"
-        # elif modelId == "mistral.mistral-":
-        #     return "mistral.mistral-"
         # elif modelId == "meta.llama2-":
         #     return "meta.llama2-"
 
