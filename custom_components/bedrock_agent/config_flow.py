@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 import boto3
+from botocore.exceptions import EndpointConnectionError
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -22,26 +23,22 @@ from .const import (
     CONST_KEY_SECRET,
     CONST_MODEL_ID,
     CONST_MODEL_LIST,
+    CONST_PROMPT_CONTEXT,
     CONST_REGION,
     DOMAIN,
 )
 
-LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONST_REGION): str,
         vol.Required(CONST_KEY_ID): str,
         vol.Required(CONST_KEY_SECRET): str,
-        vol.Required(CONST_MODEL_ID): selector.SelectSelector(
-            selector.SelectSelectorConfig(options=CONST_MODEL_LIST),
-        ),
-    }
-)
-
-STEP_INIT_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONST_REGION): str,
+        vol.Required(
+            CONST_PROMPT_CONTEXT,
+            default="Provide me a short answer to the following question: ",
+        ): str,
         vol.Required(CONST_MODEL_ID): selector.SelectSelector(
             selector.SelectSelectorConfig(options=CONST_MODEL_LIST),
         ),
@@ -63,11 +60,15 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     try:
         response = await hass.async_add_executor_job(bedrock.list_foundation_models)
-    except Exception as err:  # pylint: disable=broad-except
-        LOGGER.exception("Unexpected exception")
+    except EndpointConnectionError as err:
+        _LOGGER.exception("Unable to connect to AWS Endpoint")
         raise CannotConnect from err
-    finally:
-        bedrock.close()
+    except bedrock.exceptions.ClientError as err:
+        _LOGGER.exception("Unable to authenticate against AWS Endpoint")
+        raise InvalidAuth from err
+    except Exception as err:  # pylint: disable=broad-except
+        _LOGGER.exception("Unexpected exception")
+        raise HomeAssistantError from err
 
     if response is None or response["ResponseMetadata"]["HTTPStatusCode"] != 200:
         raise CannotConnect
@@ -92,8 +93,8 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
-            except Exception:  # pylint: disable=broad-except
-                LOGGER.exception("Unexpected exception")
+            except HomeAssistantError:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
                 return self.async_create_entry(title=info["title"], data=user_input)
@@ -141,8 +142,8 @@ class OptionsFlowHandler(OptionsFlow):
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
-            except Exception:  # pylint: disable=broad-except
-                LOGGER.exception("Unexpected exception")
+            except HomeAssistantError:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
                 return self.async_create_entry(title=info["title"], data=user_input)
@@ -157,6 +158,10 @@ class OptionsFlowHandler(OptionsFlow):
                 ): str,
                 vol.Required(
                     CONST_KEY_SECRET, default=self.config_entry.data[CONST_KEY_SECRET]
+                ): str,
+                vol.Required(
+                    CONST_PROMPT_CONTEXT,
+                    default=self.config_entry.data[CONST_PROMPT_CONTEXT],
                 ): str,
                 vol.Required(
                     CONST_MODEL_ID, default=self.config_entry.data[CONST_MODEL_ID]

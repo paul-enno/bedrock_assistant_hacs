@@ -3,9 +3,11 @@
   "name": "Amazon Bedrock Agent",
   "codeowners": ["@paul-enno"],
   "config_flow": true,
-  "issue_tracker": "https://github.com/paul-enno/bedrock_assistant_hacs/issues",
+  "dependencies": ["conversation"],
   "documentation": "https://www.home-assistant.io/integrations/bedrock_agent",
-  "version": "1.0.0-dev",
-  "integration_type": "service",
-  "single_config_entry": true
+  "homekit": {},
+  "iot_class": "cloud_push",
+  "requirements": [],
+  "ssdp": [],
+  "zeroconf": []
 }
