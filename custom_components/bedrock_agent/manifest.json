@@ -2,7 +2,7 @@
   "domain": "bedrock_agent",
   "name": "Amazon Bedrock Agent",
   "codeowners": ["@paul-enno"],
-  "version": "1.1.0",
+  "version": "1.2.0",
   "config_flow": true,
   "dependencies": ["conversation"],
   "documentation": "https://www.home-assistant.io/integrations/bedrock_agent",
