@@ -4,7 +4,7 @@
   "codeowners": ["@paul-enno"],
   "version": "1.3.1",
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["conversation"],
   "documentation": "https://www.home-assistant.io/integrations/bedrock_agent",
   "iot_class": "cloud_push"
 }
