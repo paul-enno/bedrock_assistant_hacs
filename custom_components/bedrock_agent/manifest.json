@@ -6,5 +6,5 @@
   "config_flow": true,
   "dependencies": ["conversation"],
   "documentation": "https://www.home-assistant.io/integrations/bedrock_agent",
-  "iot_class": "cloud_push",
+  "iot_class": "cloud_push"
 }
