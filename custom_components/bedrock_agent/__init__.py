@@ -10,7 +10,7 @@ from typing import Literal
 import boto3
 
 from homeassistant.components import conversation
-from homeassistant.components.conversation import agent as agent_manager
+from homeassistant.components.conversation import agent_manager
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import MATCH_ALL
 from homeassistant.core import HomeAssistant
