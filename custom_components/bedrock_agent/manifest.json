@@ -6,6 +6,7 @@
   "dependencies": ["conversation"],
   "documentation": "https://www.home-assistant.io/integrations/bedrock_agent",
   "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/paul-enno/bedrock_assistant_hacs/issues",
   "requirements": ["boto3>=1.34.120"],
   "version": "1.4.0"
 }
