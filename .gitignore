@@ -1,0 +1,21 @@
+
+# Hide sublime text stuff
+*.sublime-project
+*.sublime-workspace
+
+# Hide some OS X stuff
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Thumbnails
+._*
+
+# IntelliJ IDEA
+.idea
+*.iml
+
+# pytest
+.pytest_cache
+.cache
