@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from functools import partial
 import logging
 from typing import Any
 
@@ -21,11 +22,11 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 
 from .const import (
+    CONST_AGENT_ALIAS_ID,
+    CONST_AGENT_ID,
     CONST_KEY_ID,
     CONST_KEY_SECRET,
     CONST_KNOWLEDGEBASE_ID,
-    CONST_AGENT_ID,
-    CONST_AGENT_ALIAS_ID,
     CONST_MODEL_ID,
     CONST_MODEL_LIST,
     CONST_PROMPT_CONTEXT,
@@ -116,6 +117,42 @@ async def get_knowledgebases_selectOptionDict(
 
     return knowledgebases_list
 
+
+async def get_foundation_models_selectOptionDict(
+    hass: HomeAssistant, data: dict[str, Any]
+) -> Sequence[selector.SelectOptionDict]:
+    """Load vailable foundation models."""
+    bedrock = boto3.client(
+        service_name="bedrock",
+        region_name=data.get(CONST_REGION),
+        aws_access_key_id=data.get(CONST_KEY_ID),
+        aws_secret_access_key=data.get(CONST_KEY_SECRET),
+    )
+
+    response = await hass.async_add_executor_job(
+        partial(
+            bedrock.list_foundation_models,
+            byOutputModality="TEXT",
+            byInferenceType="ON_DEMAND",
+        )
+    )
+
+    models = response.get("modelSummaries")
+    models.sort(key=lambda m: (m.get("providerName", "").lower(), m.get("modelName", "").lower()))
+    template = "{model_provider} - {model_name}"
+    return [
+        selector.SelectOptionDict(
+            {
+                "value": m.get("modelId"),
+                "label": template.format(
+                    model_provider=m.get("providerName"), model_name=m.get("modelName")
+                ),
+            }
+        )
+        for m in models
+    ]
+
+
 async def get_agents_selectOptionDict(
     hass: HomeAssistant, data: dict[str, Any]
 ) -> Sequence[selector.SelectOptionDict]:
@@ -136,9 +173,7 @@ async def get_agents_selectOptionDict(
         )
         for a in agents
     ]
-    agents_list.insert(
-        0, selector.SelectOptionDict({"value": "", "label": "None"})
-    )
+    agents_list.insert(0, selector.SelectOptionDict({"value": "", "label": "None"}))
 
     return agents_list
 
@@ -185,7 +220,9 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
             self.hass, self.config_data
         )
 
-        agents = await get_agents_selectOptionDict(
+        agents = await get_agents_selectOptionDict(self.hass, self.config_data)
+
+        foundation_models = await get_foundation_models_selectOptionDict(
             self.hass, self.config_data
         )
 
@@ -196,7 +233,7 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                     default="Provide me a short answer to the following question: ",
                 ): str,
                 vol.Required(CONST_MODEL_ID): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=CONST_MODEL_LIST),
+                    selector.SelectSelectorConfig(options=foundation_models),
                 ),
                 vol.Optional(CONST_KNOWLEDGEBASE_ID): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=knowledgebases),
@@ -207,7 +244,6 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONST_AGENT_ALIAS_ID,
                     default="",
-                    
                 ): str,
             }
         )
@@ -232,7 +268,7 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> OptionsFlow:
         """Create the options flow."""
-        return OptionsFlowHandler(config_entry)
+        return OptionsFlowHandler()
 
 
 class CannotConnect(HomeAssistantError):
@@ -246,9 +282,13 @@ class InvalidAuth(HomeAssistantError):
 class OptionsFlowHandler(OptionsFlow):
     """Handle a options flow for Amazon Bedrock Agent."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    # def __init__(self, config_entry: ConfigEntry) -> None:
+    #     """Initialize options flow."""
+    #     self.config_entry = config_entry
+
+    def __init__(self) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._conf_app_id: str | None = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -259,6 +299,10 @@ class OptionsFlowHandler(OptionsFlow):
         )
 
         agents = await get_agents_selectOptionDict(
+            self.hass, self.config_entry.data.copy()
+        )
+
+        foundation_models = await get_foundation_models_selectOptionDict(
             self.hass, self.config_entry.data.copy()
         )
 
@@ -276,7 +320,7 @@ class OptionsFlowHandler(OptionsFlow):
                     CONST_MODEL_ID,
                     default=self.config_entry.options.get(CONST_MODEL_ID),
                 ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=CONST_MODEL_LIST),
+                    selector.SelectSelectorConfig(options=foundation_models),
                 ),
                 vol.Optional(
                     CONST_KNOWLEDGEBASE_ID,
@@ -291,9 +335,7 @@ class OptionsFlowHandler(OptionsFlow):
                 vol.Optional(
                     CONST_AGENT_ID,
                     description={
-                        "suggested_value": self.config_entry.options.get(
-                            CONST_AGENT_ID
-                        )
+                        "suggested_value": self.config_entry.options.get(CONST_AGENT_ID)
                     },
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=agents),

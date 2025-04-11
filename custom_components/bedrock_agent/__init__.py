@@ -33,11 +33,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.intent import IntentResponse, IntentResponseErrorCode
 
 from .const import (
+    CONST_AGENT_ALIAS_ID,
+    CONST_AGENT_ID,
     CONST_KEY_ID,
     CONST_KEY_SECRET,
     CONST_KNOWLEDGEBASE_ID,
-    CONST_AGENT_ID,
-    CONST_AGENT_ALIAS_ID,
     CONST_MODEL_ID,
     CONST_MODEL_LIST,
     CONST_PROMPT_CONTEXT,
@@ -51,11 +51,11 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 __all__ = [
+    "BedrockAgent",
+    "async_process",
     "async_setup_entry",
     "async_unload_entry",
     "options_update_listener",
-    "async_process",
-    "BedrockAgent",
 ]
 
 
@@ -157,7 +157,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         except ClientError as error:
             raise HomeAssistantError(
-                f"Bedrock Error: `{error.response.get("Error").get("Message")}`"
+                f"Bedrock Error: `{error.response.get('Error').get('Message')}`"
             ) from error
 
         description = (
@@ -232,7 +232,9 @@ class BedrockAgent(conversation.AbstractConversationAgent):
         """Return a list of supported models."""
         return CONST_MODEL_LIST
 
-    async def async_call_bedrock(self, question, conversation_id = uuid.uuid4().hex) -> str:
+    async def async_call_bedrock(
+        self, question, conversation_id=uuid.uuid4().hex
+    ) -> str:
         """Return result from Amazon Bedrock."""
 
         question = self.entry.options[CONST_PROMPT_CONTEXT] + question
@@ -240,16 +242,18 @@ class BedrockAgent(conversation.AbstractConversationAgent):
         modelId = self.entry.options[CONST_MODEL_ID]
         knowledgebaseId = self.entry.options.get(CONST_KNOWLEDGEBASE_ID) or ""
         configAgentId = self.entry.options.get(CONST_AGENT_ID) or ""
-        configAgentAliasId = self.entry.options.get(CONST_AGENT_ALIAS_ID) or "TSTALIASID"
+        configAgentAliasId = (
+            self.entry.options.get(CONST_AGENT_ALIAS_ID) or "TSTALIASID"
+        )
 
         if configAgentId != "":
             bedrock_agent_response = await self.hass.async_add_executor_job(
                 partial(
                     self.bedrock_agent.invoke_agent,
-                    agentId = configAgentId,
-                    agentAliasId = configAgentAliasId,
-                    sessionId = conversation_id,
-                    inputText = question
+                    agentId=configAgentId,
+                    agentAliasId=configAgentAliasId,
+                    sessionId=conversation_id,
+                    inputText=question,
                 ),
             )
 
@@ -295,13 +299,14 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             )
         except ClientError as error:
             raise HomeAssistantError(
-                f"Amazon Bedrock Error: `{error.response.get("Error").get("Message")}`"
+                f"Amazon Bedrock Error: `{error.response.get('Error').get('Message')}`"
             ) from error
 
         return bedrock_response["output"]["message"].get("content")[0].get("text")
 
     async def async_process(
-        self, user_input: agent_manager.ConversationInput
+        self,
+        user_input: agent_manager.ConversationInput,
     ) -> agent_manager.ConversationResult:
         """Process a sentence."""
         response = IntentResponse(language=user_input.language)
@@ -310,10 +315,15 @@ class BedrockAgent(conversation.AbstractConversationAgent):
 
         try:
             answer = await self.async_call_bedrock(user_input.text)
+            # Add the response to the chat log.
+
             response.async_set_speech(answer)
         except HomeAssistantError as error:
             response.async_set_error(
                 IntentResponseErrorCode.FAILED_TO_HANDLE, error.args[0]
             )
 
-        return agent_manager.ConversationResult(conversation_id=conversatioin_id, response=response)
+        return agent_manager.ConversationResult(
+            conversation_id=conversatioin_id,
+            response=response,
+        )
