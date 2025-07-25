@@ -118,6 +118,39 @@ async def get_knowledgebases_selectOptionDict(
     return knowledgebases_list
 
 
+async def get_inference_profiles_selectOptionDict(
+    hass: HomeAssistant, data: dict[str, Any]
+) -> Sequence[selector.SelectOptionDict]:
+    """Load vailable foundation models."""
+    bedrock = boto3.client(
+        service_name="bedrock",
+        region_name=data.get(CONST_REGION),
+        aws_access_key_id=data.get(CONST_KEY_ID),
+        aws_secret_access_key=data.get(CONST_KEY_SECRET),
+    )
+
+    response= await hass.async_add_executor_job(
+        partial(
+            bedrock.list_inference_profiles
+        )
+    )
+
+    models = response.get("inferenceProfileSummaries")
+    models.sort(key=lambda m: (m.get("inferenceProfileName").lower()))
+    template = "{profileName}"
+    return [
+        selector.SelectOptionDict(
+            {
+                "value": m.get("inferenceProfileId"),
+                "label": template.format(
+                    profileName=m.get("inferenceProfileName")
+                ),
+            }
+        )
+        for m in models
+    ]
+
+
 async def get_foundation_models_selectOptionDict(
     hass: HomeAssistant, data: dict[str, Any]
 ) -> Sequence[selector.SelectOptionDict]:
@@ -129,7 +162,7 @@ async def get_foundation_models_selectOptionDict(
         aws_secret_access_key=data.get(CONST_KEY_SECRET),
     )
 
-    response = await hass.async_add_executor_job(
+    model_response = await hass.async_add_executor_job(
         partial(
             bedrock.list_foundation_models,
             byOutputModality="TEXT",
@@ -137,10 +170,11 @@ async def get_foundation_models_selectOptionDict(
         )
     )
 
-    models = response.get("modelSummaries")
+    models = model_response.get("modelSummaries")
     models.sort(key=lambda m: (m.get("providerName", "").lower(), m.get("modelName", "").lower()))
     template = "{model_provider} - {model_name}"
-    return [
+
+    modelSelectOptis = [
         selector.SelectOptionDict(
             {
                 "value": m.get("modelId"),
@@ -151,6 +185,28 @@ async def get_foundation_models_selectOptionDict(
         )
         for m in models
     ]
+
+    profiles_response = await hass.async_add_executor_job(
+        partial(
+            bedrock.list_inference_profiles
+        )
+    )
+    profiles = profiles_response.get("inferenceProfileSummaries")
+    profiles.sort(key=lambda p: (p.get("inferenceProfileName").lower()))
+    template = "{profileName}"
+    profileSelectOptis =[
+        selector.SelectOptionDict(
+            {
+                "value": p.get("inferenceProfileId"),
+                "label": template.format(
+                    profileName=p.get("inferenceProfileName")
+                ),
+            }
+        )
+        for p in profiles
+    ]
+
+    return modelSelectOptis + profileSelectOptis
 
 
 async def get_agents_selectOptionDict(

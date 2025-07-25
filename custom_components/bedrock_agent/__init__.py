@@ -29,7 +29,7 @@ from homeassistant.core import (
     SupportsResponse,
 )
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, llm
 from homeassistant.helpers.intent import IntentResponse, IntentResponseErrorCode
 
 from .const import (
@@ -48,6 +48,7 @@ from .const import (
     CONST_SERVICE_PARAM_PROMPT,
     DOMAIN,
 )
+from .strands_wrapper import StrandsAgentWrapper
 
 _LOGGER = logging.getLogger(__name__)
 __all__ = [
@@ -100,8 +101,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_cognitive_task(call: ServiceCall) -> ServiceResponse:
         """Return answer to prompt and description of image."""
         param_model_id = call.data.get(
-            CONST_SERVICE_PARAM_MODEL_ID, "anthropic.claude-3-haiku-20240307-v1:0"
+            CONST_SERVICE_PARAM_MODEL_ID, "us.anthropic.claude-sonnet-4-20250514-v1:0"
         )
+
+        strands_agent_wrapper = StrandsAgentWrapper(
+            hass=hass,
+            aws_access_key_id=entry.data[CONST_KEY_ID],
+            aws_secret_access_key=entry.data[CONST_KEY_SECRET],
+            region_name=entry.data[CONST_REGION],
+            model_id=param_model_id,
+            apis = llm.async_get_apis(hass)
+        )
+
         param_prompt = call.data.get(CONST_SERVICE_PARAM_PROMPT)
         prompt_content = [{"text": param_prompt}]
         image_filenames = call.data.get(CONST_SERVICE_PARAM_FILENAMES)
@@ -137,31 +148,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     f"Status: `{error.status}`, Reason: `{error.reason}`"
                 ) from error
 
-        bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=entry.data[CONST_REGION],
-            aws_access_key_id=entry.data[CONST_KEY_ID],
-            aws_secret_access_key=entry.data[CONST_KEY_SECRET],
-        )
-
-        message = {"role": "user", "content": prompt_content}
-        messages = [message]
-
         try:
-            bedrock_response = await hass.async_add_executor_job(
-                partial(
-                    bedrock.converse,
-                    modelId=param_model_id,
-                    messages=messages,
-                ),
-            )
+            result = await strands_agent_wrapper.generate_response(prompt_content)
         except ClientError as error:
             raise HomeAssistantError(
                 f"Bedrock Error: `{error.response.get('Error').get('Message')}`"
             ) from error
 
         description = (
-            bedrock_response["output"]["message"].get("content")[0].get("text")
+            result
+            #bedrock_response["output"]["message"].get("content")[0].get("text")
         )
 
         return {"text": f"{description}"}
@@ -209,18 +205,33 @@ class BedrockAgent(conversation.AbstractConversationAgent):
         self.hass = hass
         self.entry = entry
         self.history: dict[str, list[dict]] = {}
-        self.bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=self.entry.data[CONST_REGION],
-            aws_access_key_id=self.entry.data[CONST_KEY_ID],
-            aws_secret_access_key=self.entry.data[CONST_KEY_SECRET],
-        )
+
+        # self.bedrock_agent = self.hass.async_add_executor_job(
+        #         partial(boto3.client,
+        #                 service_name="bedrock-agent-runtime",
+        #                 region_name=self.entry.data[CONST_REGION],
+        #                 aws_access_key_id=self.entry.data[CONST_KEY_ID],
+        #                 aws_secret_access_key=self.entry.data[CONST_KEY_SECRET]))
+
         self.bedrock_agent = boto3.client(
             service_name="bedrock-agent-runtime",
             region_name=self.entry.data[CONST_REGION],
             aws_access_key_id=self.entry.data[CONST_KEY_ID],
             aws_secret_access_key=self.entry.data[CONST_KEY_SECRET],
         )
+
+        # Initialize the strands agent wrapper
+
+        self.strands_agent_wrapper = StrandsAgentWrapper(
+            hass=self.hass,
+            aws_access_key_id=self.entry.data[CONST_KEY_ID],
+            aws_secret_access_key=self.entry.data[CONST_KEY_SECRET],
+            region_name=self.entry.data[CONST_REGION],
+            model_id=self.entry.options[CONST_MODEL_ID],
+            apis = llm.async_get_apis(self.hass),
+            system_prompt = self.entry.options[CONST_PROMPT_CONTEXT]
+        )
+
 
     @property
     def supported_languages(self) -> list[str] | Literal["*"]:
@@ -233,14 +244,14 @@ class BedrockAgent(conversation.AbstractConversationAgent):
         return CONST_MODEL_LIST
 
     async def async_call_bedrock(
-        self, question, conversation_id=uuid.uuid4().hex
+        self, userInput: agent_manager.ConversationInput
     ) -> str:
         """Return result from Amazon Bedrock."""
+        inital_question = userInput.text
+        question = self.entry.options[CONST_PROMPT_CONTEXT] + userInput.text
 
-        question = self.entry.options[CONST_PROMPT_CONTEXT] + question
-
-        modelId = self.entry.options[CONST_MODEL_ID]
-        knowledgebaseId = self.entry.options.get(CONST_KNOWLEDGEBASE_ID) or ""
+        # modelId = self.entry.options[CONST_MODEL_ID]
+        # knowledgebaseId = self.entry.options.get(CONST_KNOWLEDGEBASE_ID) or ""
         configAgentId = self.entry.options.get(CONST_AGENT_ID) or ""
         configAgentAliasId = (
             self.entry.options.get(CONST_AGENT_ALIAS_ID) or "TSTALIASID"
@@ -252,7 +263,7 @@ class BedrockAgent(conversation.AbstractConversationAgent):
                     self.bedrock_agent.invoke_agent,
                     agentId=configAgentId,
                     agentAliasId=configAgentAliasId,
-                    sessionId=conversation_id,
+                    sessionId=userInput.conversation_id,
                     inputText=question,
                 ),
             )
@@ -265,44 +276,7 @@ class BedrockAgent(conversation.AbstractConversationAgent):
 
             return completion
 
-        if knowledgebaseId != "":
-            agent_input = {"text": question}
-            agent_retrieveAndGenerateConfiguration = {
-                "knowledgeBaseConfiguration": {
-                    "knowledgeBaseId": knowledgebaseId,
-                    "modelArn": modelId,
-                },
-                "type": "KNOWLEDGE_BASE",
-            }
-
-            bedrock_agent_response = await self.hass.async_add_executor_job(
-                partial(
-                    self.bedrock_agent.retrieve_and_generate,
-                    input=agent_input,
-                    retrieveAndGenerateConfiguration=agent_retrieveAndGenerateConfiguration,
-                ),
-            )
-
-            return bedrock_agent_response["output"]["text"]
-
-        prompt_content = [{"text": question}]
-        message = {"role": "user", "content": prompt_content}
-        messages = [message]
-
-        try:
-            bedrock_response = await self.hass.async_add_executor_job(
-                partial(
-                    self.bedrock.converse,
-                    modelId=modelId,
-                    messages=messages,
-                ),
-            )
-        except ClientError as error:
-            raise HomeAssistantError(
-                f"Amazon Bedrock Error: `{error.response.get('Error').get('Message')}`"
-            ) from error
-
-        return bedrock_response["output"]["message"].get("content")[0].get("text")
+        return await self.strands_agent_wrapper.generate_response(inital_question,  userInput.as_llm_context(DOMAIN))
 
     async def async_process(
         self,
@@ -311,10 +285,10 @@ class BedrockAgent(conversation.AbstractConversationAgent):
         """Process a sentence."""
         response = IntentResponse(language=user_input.language)
 
-        conversatioin_id = user_input.conversation_id or uuid.uuid4().hex
+        user_input.conversation_id = user_input.conversation_id or uuid.uuid4().hex
 
         try:
-            answer = await self.async_call_bedrock(user_input.text)
+            answer = await self.async_call_bedrock(user_input)
             # Add the response to the chat log.
 
             response.async_set_speech(answer)
@@ -324,6 +298,6 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             )
 
         return agent_manager.ConversationResult(
-            conversation_id=conversatioin_id,
+            conversation_id=user_input.conversation_id,
             response=response,
         )
