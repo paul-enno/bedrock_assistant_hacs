@@ -1,6 +1,5 @@
 """Wrapper for strands.Agent to make it easier to test and implement."""
 
-from functools import partial
 import logging
 from typing import Any
 
@@ -54,17 +53,14 @@ class StrandsAgentWrapper:
             boto_session=session
         )
 
+        self.session_manager = FileSessionManager(session_id="enno-123", storage_dir="/tmp/strands")  # noqa: S108
+
+        self.agent = Agent(model=self.bedrock_model, session_manager=self.session_manager, system_prompt=self.system_prompt)
+
     async def generate_response(self, prompt: Any, llm_context: LLMContext | None = None) -> str:
         """Generate a response from the agent."""
-
-        userID = llm_context.context.user_id if llm_context and llm_context.context and llm_context.context.user_id else "enno-123"
-
-        session_manager = await self.hass.async_add_executor_job(partial(FileSessionManager, session_id=userID, storage_dir="/tmp/strands"))  # noqa: S108
-
-        agent = await self.hass.async_add_executor_job(partial(Agent, model=self.bedrock_model, session_manager=session_manager, system_prompt=self.system_prompt))
-
         try:
-            response = await self.hass.async_add_executor_job(agent, prompt)
+            response = await self.hass.async_add_executor_job(self.agent, prompt)
             return response.__str__()
         except ClientError as error:
             raise HomeAssistantError(
