@@ -16,6 +16,7 @@ import boto3
 from botocore.exceptions import ClientError
 import PIL.Image
 from PIL.Image import Image
+from strands.types.content import ContentBlock
 import voluptuous as vol
 
 from homeassistant.components import conversation
@@ -53,12 +54,10 @@ from .strands_wrapper import StrandsAgentWrapper
 _LOGGER = logging.getLogger(__name__)
 __all__ = [
     "BedrockAgent",
-    "async_process",
     "async_setup_entry",
     "async_unload_entry",
     "options_update_listener",
 ]
-
 
 # Example migration function
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
@@ -90,6 +89,8 @@ async def build_converse_prompt_content(image: Image) -> Any:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Bedrock Agent from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+    bedrockAgent = BedrockAgent(hass, entry)
+    # conversation.async_set_agent(hass, entry, bedrockAgent)
     conversation.async_set_agent(hass, entry, BedrockAgent(hass, entry))
 
     hass_data = dict(entry.data)
@@ -104,17 +105,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             CONST_SERVICE_PARAM_MODEL_ID, "us.anthropic.claude-sonnet-4-20250514-v1:0"
         )
 
-        strands_agent_wrapper = StrandsAgentWrapper(
-            hass=hass,
-            aws_access_key_id=entry.data[CONST_KEY_ID],
-            aws_secret_access_key=entry.data[CONST_KEY_SECRET],
-            region_name=entry.data[CONST_REGION],
-            model_id=param_model_id,
-            apis = llm.async_get_apis(hass)
-        )
+        agent = bedrockAgent.strands_agent_wrapper.get_agent(param_model_id, False, False)
 
-        param_prompt = call.data.get(CONST_SERVICE_PARAM_PROMPT)
-        prompt_content = [{"text": param_prompt}]
+        param_prompt = str(call.data.get(CONST_SERVICE_PARAM_PROMPT))
+        prompt_content : list[ContentBlock] = [{"text": param_prompt}]
         image_filenames = call.data.get(CONST_SERVICE_PARAM_FILENAMES)
         for image_filename in image_filenames or []:
             if not hass.config.is_allowed_path(image_filename):
@@ -149,7 +143,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ) from error
 
         try:
-            result = await strands_agent_wrapper.generate_response(prompt_content)
+            result = agent(prompt_content)
         except ClientError as error:
             raise HomeAssistantError(
                 f"Bedrock Error: `{error.response.get('Error').get('Message')}`"
@@ -206,19 +200,19 @@ class BedrockAgent(conversation.AbstractConversationAgent):
         self.entry = entry
         self.history: dict[str, list[dict]] = {}
 
-        # self.bedrock_agent = self.hass.async_add_executor_job(
-        #         partial(boto3.client,
-        #                 service_name="bedrock-agent-runtime",
-        #                 region_name=self.entry.data[CONST_REGION],
-        #                 aws_access_key_id=self.entry.data[CONST_KEY_ID],
-        #                 aws_secret_access_key=self.entry.data[CONST_KEY_SECRET]))
+        self.bedrock_agent = hass.async_add_executor_job(
+                partial(boto3.client,
+                        service_name="bedrock-agent-runtime",
+                        region_name=self.entry.data[CONST_REGION],
+                        aws_access_key_id=self.entry.data[CONST_KEY_ID],
+                        aws_secret_access_key=self.entry.data[CONST_KEY_SECRET]))
 
-        self.bedrock_agent = boto3.client(
-            service_name="bedrock-agent-runtime",
-            region_name=self.entry.data[CONST_REGION],
-            aws_access_key_id=self.entry.data[CONST_KEY_ID],
-            aws_secret_access_key=self.entry.data[CONST_KEY_SECRET],
-        )
+        # self.bedrock_agent = boto3.client(
+        #     service_name="bedrock-agent-runtime",
+        #     region_name=self.entry.data[CONST_REGION],
+        #     aws_access_key_id=self.entry.data[CONST_KEY_ID],
+        #     aws_secret_access_key=self.entry.data[CONST_KEY_SECRET],
+        # )
 
         # Initialize the strands agent wrapper
 
@@ -301,3 +295,4 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             conversation_id=user_input.conversation_id,
             response=response,
         )
+
