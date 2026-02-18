@@ -9,7 +9,9 @@
   "issue_tracker": "https://github.com/paul-enno/bedrock_assistant_hacs/issues",
   "requirements": [
     "boto3==1.39.13",
-    "strands-agents==1.1.0",
-    "strands-agents-tools==0.2.2"],
-  "version": "1.6.1"
+    "strands-agents==1.26.0",
+    "strands-agents-tools==0.2.2",
+    "strands-agents-tools[mem0_memory]==0.1.19",
+    "faiss-cpu==1.9.0"],
+  "version": "2.0"
 }

@@ -22,11 +22,11 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 
 from .const import (
-    CONST_AGENT_ALIAS_ID,
-    CONST_AGENT_ID,
+    CONST_ENABLE_HA_CONTROL,
+    CONST_ENABLE_MEMORY,
     CONST_KEY_ID,
     CONST_KEY_SECRET,
-    CONST_KNOWLEDGEBASE_ID,
+    CONST_MEMORY_STORAGE_PATH,
     CONST_MODEL_ID,
     CONST_MODEL_LIST,
     CONST_PROMPT_CONTEXT,
@@ -55,8 +55,6 @@ STEP_MODELCONFIG_DATA_SCHEMA = vol.Schema(
         vol.Required(CONST_MODEL_ID): selector.SelectSelector(
             selector.SelectSelectorConfig(options=CONST_MODEL_LIST),
         ),
-        vol.Optional(CONST_KNOWLEDGEBASE_ID): str,
-        vol.Optional(CONST_AGENT_ID): str,
     }
 )
 
@@ -91,70 +89,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     return {"title": "Bedrock"}
 
 
-async def get_knowledgebases_selectOptionDict(
+async def get_foundation_models_select_option_dict(
     hass: HomeAssistant, data: dict[str, Any]
 ) -> Sequence[selector.SelectOptionDict]:
-    """Return available knowledgebases."""
-
-    bedrock_agent = boto3.client(
-        service_name="bedrock-agent",
-        region_name=data.get(CONST_REGION),
-        aws_access_key_id=data.get(CONST_KEY_ID),
-        aws_secret_access_key=data.get(CONST_KEY_SECRET),
-    )
-
-    response = await hass.async_add_executor_job(bedrock_agent.list_knowledge_bases)
-    knowledgebases = response.get("knowledgeBaseSummaries")
-    knowledgebases_list = [
-        selector.SelectOptionDict(
-            {"value": k.get("knowledgeBaseId"), "label": k.get("name")}
-        )
-        for k in knowledgebases
-    ]
-    knowledgebases_list.insert(
-        0, selector.SelectOptionDict({"value": "", "label": "None"})
-    )
-
-    return knowledgebases_list
-
-
-async def get_inference_profiles_selectOptionDict(
-    hass: HomeAssistant, data: dict[str, Any]
-) -> Sequence[selector.SelectOptionDict]:
-    """Load vailable foundation models."""
-    bedrock = boto3.client(
-        service_name="bedrock",
-        region_name=data.get(CONST_REGION),
-        aws_access_key_id=data.get(CONST_KEY_ID),
-        aws_secret_access_key=data.get(CONST_KEY_SECRET),
-    )
-
-    response= await hass.async_add_executor_job(
-        partial(
-            bedrock.list_inference_profiles
-        )
-    )
-
-    models = response.get("inferenceProfileSummaries")
-    models.sort(key=lambda m: (m.get("inferenceProfileName").lower()))
-    template = "{profileName}"
-    return [
-        selector.SelectOptionDict(
-            {
-                "value": m.get("inferenceProfileId"),
-                "label": template.format(
-                    profileName=m.get("inferenceProfileName")
-                ),
-            }
-        )
-        for m in models
-    ]
-
-
-async def get_foundation_models_selectOptionDict(
-    hass: HomeAssistant, data: dict[str, Any]
-) -> Sequence[selector.SelectOptionDict]:
-    """Load vailable foundation models."""
+    """Load available foundation models."""
     bedrock = boto3.client(
         service_name="bedrock",
         region_name=data.get(CONST_REGION),
@@ -171,10 +109,15 @@ async def get_foundation_models_selectOptionDict(
     )
 
     models = model_response.get("modelSummaries")
-    models.sort(key=lambda m: (m.get("providerName", "").lower(), m.get("modelName", "").lower()))
+    models.sort(
+        key=lambda m: (
+            m.get("providerName", "").lower(),
+            m.get("modelName", "").lower(),
+        )
+    )
     template = "{model_provider} - {model_name}"
 
-    modelSelectOptis = [
+    model_select_options = [
         selector.SelectOptionDict(
             {
                 "value": m.get("modelId"),
@@ -187,51 +130,22 @@ async def get_foundation_models_selectOptionDict(
     ]
 
     profiles_response = await hass.async_add_executor_job(
-        partial(
-            bedrock.list_inference_profiles
-        )
+        partial(bedrock.list_inference_profiles)
     )
     profiles = profiles_response.get("inferenceProfileSummaries")
-    profiles.sort(key=lambda p: (p.get("inferenceProfileName").lower()))
+    profiles.sort(key=lambda p: p.get("inferenceProfileName").lower())
     template = "{profileName}"
-    profileSelectOptis =[
+    profile_select_options = [
         selector.SelectOptionDict(
             {
                 "value": p.get("inferenceProfileId"),
-                "label": template.format(
-                    profileName=p.get("inferenceProfileName")
-                ),
+                "label": template.format(profileName=p.get("inferenceProfileName")),
             }
         )
         for p in profiles
     ]
 
-    return modelSelectOptis + profileSelectOptis
-
-
-async def get_agents_selectOptionDict(
-    hass: HomeAssistant, data: dict[str, Any]
-) -> Sequence[selector.SelectOptionDict]:
-    """Return available knowledgebases."""
-
-    bedrock_agent = boto3.client(
-        service_name="bedrock-agent",
-        region_name=data.get(CONST_REGION),
-        aws_access_key_id=data.get(CONST_KEY_ID),
-        aws_secret_access_key=data.get(CONST_KEY_SECRET),
-    )
-
-    response = await hass.async_add_executor_job(bedrock_agent.list_agents)
-    agents = response.get("agentSummaries")
-    agents_list = [
-        selector.SelectOptionDict(
-            {"value": a.get("agentId"), "label": a.get("agentName")}
-        )
-        for a in agents
-    ]
-    agents_list.insert(0, selector.SelectOptionDict({"value": "", "label": "None"}))
-
-    return agents_list
+    return model_select_options + profile_select_options
 
 
 class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -272,13 +186,7 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle the initial step."""
 
-        knowledgebases = await get_knowledgebases_selectOptionDict(
-            self.hass, self.config_data
-        )
-
-        agents = await get_agents_selectOptionDict(self.hass, self.config_data)
-
-        foundation_models = await get_foundation_models_selectOptionDict(
+        foundation_models = await get_foundation_models_select_option_dict(
             self.hass, self.config_data
         )
 
@@ -291,16 +199,22 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONST_MODEL_ID): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=foundation_models),
                 ),
-                vol.Optional(CONST_KNOWLEDGEBASE_ID): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=knowledgebases),
-                ),
-                vol.Optional(CONST_AGENT_ID): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=agents),
-                ),
                 vol.Optional(
-                    CONST_AGENT_ALIAS_ID,
+                    CONST_ENABLE_HA_CONTROL,
+                    default=True,
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONST_ENABLE_MEMORY,
+                    default=True,
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONST_MEMORY_STORAGE_PATH,
                     default="",
-                ): str,
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.TEXT, multiline=False
+                    )
+                ),
             }
         )
 
@@ -350,15 +264,7 @@ class OptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Optionsflow to edit model configuration."""
-        knowledgebases = await get_knowledgebases_selectOptionDict(
-            self.hass, self.config_entry.data.copy()
-        )
-
-        agents = await get_agents_selectOptionDict(
-            self.hass, self.config_entry.data.copy()
-        )
-
-        foundation_models = await get_foundation_models_selectOptionDict(
+        foundation_models = await get_foundation_models_select_option_dict(
             self.hass, self.config_entry.data.copy()
         )
 
@@ -379,26 +285,20 @@ class OptionsFlowHandler(OptionsFlow):
                     selector.SelectSelectorConfig(options=foundation_models),
                 ),
                 vol.Optional(
-                    CONST_KNOWLEDGEBASE_ID,
-                    description={
-                        "suggested_value": self.config_entry.options.get(
-                            CONST_KNOWLEDGEBASE_ID
-                        )
-                    },
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=knowledgebases),
-                ),
+                    CONST_ENABLE_HA_CONTROL,
+                    default=self.config_entry.options.get(
+                        CONST_ENABLE_HA_CONTROL, True
+                    ),
+                ): selector.BooleanSelector(),
                 vol.Optional(
-                    CONST_AGENT_ID,
-                    description={
-                        "suggested_value": self.config_entry.options.get(CONST_AGENT_ID)
-                    },
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=agents),
-                ),
+                    CONST_ENABLE_MEMORY,
+                    default=self.config_entry.options.get(CONST_ENABLE_MEMORY, True),
+                ): selector.BooleanSelector(),
                 vol.Optional(
-                    CONST_AGENT_ALIAS_ID,
-                    default=self.config_entry.options.get(CONST_AGENT_ALIAS_ID) or "",
+                    CONST_MEMORY_STORAGE_PATH,
+                    default=self.config_entry.options.get(
+                        CONST_MEMORY_STORAGE_PATH, ""
+                    ),
                 ): selector.TextSelector(
                     selector.TextSelectorConfig(
                         type=selector.TextSelectorType.TEXT, multiline=False

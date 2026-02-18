@@ -44,3 +44,23 @@ cognitive_task:
       required: false
       selector:
         object:
+
+clear_conversation_cache:
+  name: Clear conversation cache
+  description: Clear the agent cache for a specific conversation ID. Note - This does not clear mem0 memories, only the agent instance cache.
+  fields:
+    conversation_id:
+      name: Conversation ID
+      description: The unique identifier of the conversation to clear from cache.
+      required: true
+      selector:
+        text:
+
+clear_all_cache:
+  name: Clear all cache
+  description: Clear all agent cache for all conversations. Note - This does not clear mem0 memories, only the agent instance cache.
+
+get_memory_stats:
+  name: Get memory statistics
+  description: Get statistics about the memory system including whether mem0 is available and enabled.
+

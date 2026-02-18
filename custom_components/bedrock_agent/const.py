@@ -8,12 +8,12 @@ CONST_KEY_ID: Final = "key_id"
 CONST_KEY_SECRET: Final = "key_secret"
 CONST_REGION: Final = "region"
 CONST_MODEL_ID: Final = "model_id"
-CONST_KNOWLEDGEBASE_ID: Final = "knowledgebase_id"
-CONST_AGENT_ID: Final = "agent_id"
-CONST_AGENT_ALIAS_ID: Final = "agent_alias_id"
 CONST_TITLE: Final = "title"
 
 CONST_PROMPT_CONTEXT: Final = "prompt_context"
+CONST_ENABLE_MEMORY: Final = "enable_memory"
+CONST_ENABLE_HA_CONTROL: Final = "enable_ha_control"
+CONST_MEMORY_STORAGE_PATH: Final = "memory_storage_path"
 CONST_MODEL_LIST: Final = [
     "amazon.titan-text-express-v1",
     "amazon.titan-text-lite-v1",

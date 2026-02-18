@@ -1,79 +1,89 @@
 {
   "config": {
-    "step": {
-      "user": {
-        "title": "Bedrock AWS Connection",
-        "description": "Enter your connections details.",
-        "data": {
-          "title": "Name",
-          "region": "Region",
-          "key_id": "Key ID",
-          "key_secret": "Key Secret"
-        },
-        "data_description": {
-          "title": "The title of your Agend in Home Assistant."
-        }
-      },
-      "modelconfig": {
-        "title": "Model Configuration",
-        "data": {
-          "use_knowledgebase": "Activate Knowledgebase",
-          "model_id": "Model",
-          "prompt_context": "Prompt Context",
-          "knowledgebase_id": "Knowledge Base",
-          "agent_id": "Agent",
-          "agent_alias_id": "AliasId"
-        }
-      }
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
       "unknown": "[%key:common::config_flow::error::unknown%]"
     },
-    "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    "step": {
+      "modelconfig": {
+        "data": {
+          "agent_alias_id": "AliasId",
+          "enable_ha_control": "Enable Home Assistant Control",
+          "enable_memory": "Enable Long-term Memory",
+          "memory_storage_path": "Memory Storage Path",
+          "model_id": "Model",
+          "prompt_context": "Prompt Context"
+        },
+        "data_description": {
+          "enable_ha_control": "Enable Home Assistant device control through the conversation agent. Allows the agent to turn devices on/off, query states, and control your smart home.",
+          "enable_memory": "Enable semantic memory with Mem0 for personalized, context-aware conversations that persist across sessions.",
+          "memory_storage_path": "Custom path for storing memory data (leave empty for default: /config/.storage/bedrock_agent_memory). Path must be writable."
+        },
+        "title": "Model Configuration"
+      },
+      "user": {
+        "data": {
+          "key_id": "Key ID",
+          "key_secret": "Key Secret",
+          "region": "Region",
+          "title": "Name"
+        },
+        "data_description": {
+          "title": "The title of your Agend in Home Assistant."
+        },
+        "description": "Enter your connections details.",
+        "title": "Bedrock AWS Connection"
+      }
     }
   },
   "options": {
     "step": {
       "init": {
         "data": {
+          "enable_ha_control": "Enable Home Assistant Control",
+          "enable_memory": "Enable Long-term Memory",
+          "memory_storage_path": "Memory Storage Path",
           "model_id": "Model",
-          "prompt_context": "Prompt Context",
-          "knowledgebase_id": "Knowledge Base",
-          "agent_id": "Agent",
-          "agent_alias_id": "AliasId"
+          "prompt_context": "Prompt Context"
+        },
+        "data_description": {
+          "enable_ha_control": "Enable Home Assistant device control through the conversation agent. Allows the agent to turn devices on/off, query states, and control your smart home.",
+          "enable_memory": "Enable semantic memory with Mem0 for personalized, context-aware conversations that persist across sessions.",
+          "memory_storage_path": "Custom path for storing memory data (leave empty for default: /config/.storage/bedrock_agent_memory). Path must be writable."
         }
       }
     }
   },
   "services": {
     "cognitive_task": {
-      "name": "Cognitive Task",
       "description": "This service provides a convenient and efficient way to send multimodal prompts to Antropic Claude models through the Amazon Bedrock platform. It supports both generic text-based prompts as well as prompts that include multiple images, allowing for a more comprehensive and engaging interaction with the AI models.",
       "fields": {
-        "prompt": {
-          "name": "Prompt",
-          "description": "Textual input that the model uses to generate or continue output.",
-          "example": "Describe what you see in these images"
-        },
-        "model_id": {
-          "name": "Model ID",
-          "description": "Unique identifier assigned to a specific LLM. Default: anthropic.claude-3-haiku-20240307-v1:0",
-          "example": "anthropic.claude-3-haiku-20240307-v1:0"
-        },
         "image_filenames": {
-          "name": "Image filenames",
           "description": "One or multiple file names.",
-          "example": "- /config/www/image.jpg"
+          "example": "- /config/www/image.jpg",
+          "name": "Image filenames"
         },
         "image_urls": {
-          "name": "Image URLS",
           "description": "URLs that point to images.",
-          "example": "- https://localhost:8123/local/image.jpg"
+          "example": "- https://localhost:8123/local/image.jpg",
+          "name": "Image URLS"
+        },
+        "model_id": {
+          "description": "Unique identifier assigned to a specific LLM. Default: anthropic.claude-3-haiku-20240307-v1:0",
+          "example": "anthropic.claude-3-haiku-20240307-v1:0",
+          "name": "Model ID"
+        },
+        "prompt": {
+          "description": "Textual input that the model uses to generate or continue output.",
+          "example": "Describe what you see in these images",
+          "name": "Prompt"
         }
-      }
+      },
+      "name": "Cognitive Task"
     }
   }
 }
