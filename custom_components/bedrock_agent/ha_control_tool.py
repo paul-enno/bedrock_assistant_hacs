@@ -108,7 +108,7 @@ class HAToolRegistry:
                 "error": f"Tool '{tool_name}' not found. Available tools: {available}"
             }
 
-        tool, api_id = self.tools_by_name[tool_name]
+        ha_tool, api_id = self.tools_by_name[tool_name]
 
         try:
             _LOGGER.debug(
@@ -125,7 +125,7 @@ class HAToolRegistry:
             )
 
             # Call the HA tool
-            result = await tool.async_call(hass, tool_input, llm_context)
+            result = await ha_tool.async_call(hass, tool_input, llm_context)
 
             _LOGGER.debug("HA tool %s result: %s", tool_name, result)
 
@@ -220,7 +220,7 @@ Examples:
             **kwargs: Additional parameters for specific intents
         """
         _LOGGER.info(
-            "homeassistant_control called: tool_name=%s, name='%s', domain='%s', brightness=%s, color='%s', kwargs=%s",
+            "Homeassistant_control called: tool_name=%s, name='%s', domain='%s', brightness=%s, color='%s', kwargs=%s",
             tool_name,
             name,
             domain,

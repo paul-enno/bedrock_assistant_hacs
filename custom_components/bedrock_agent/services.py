@@ -55,7 +55,7 @@ class CognitiveTaskService:
             CONST_SERVICE_PARAM_MODEL_ID, "us.anthropic.claude-sonnet-4-20250514-v1:0"
         )
 
-        agent = self.bedrock_agent.strands_agent_wrapper.get_simple_agent(
+        agent = await self.bedrock_agent.strands_agent_wrapper.get_simple_agent(
             param_model_id
         )
 

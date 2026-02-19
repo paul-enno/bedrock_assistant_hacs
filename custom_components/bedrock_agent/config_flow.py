@@ -26,12 +26,14 @@ from .const import (
     CONST_ENABLE_MEMORY,
     CONST_KEY_ID,
     CONST_KEY_SECRET,
+    CONST_MEMORY_GUIDELINES,
     CONST_MEMORY_STORAGE_PATH,
     CONST_MODEL_ID,
     CONST_MODEL_LIST,
     CONST_PROMPT_CONTEXT,
     CONST_REGION,
     CONST_TITLE,
+    DEFAULT_MEMORY_GUIDELINES,
     DOMAIN,
 )
 
@@ -268,44 +270,61 @@ class OptionsFlowHandler(OptionsFlow):
             self.hass, self.config_entry.data.copy()
         )
 
-        options_schema = vol.Schema(
-            {
-                vol.Required(
-                    CONST_PROMPT_CONTEXT,
-                    default=self.config_entry.options.get(CONST_PROMPT_CONTEXT),
-                ): selector.TextSelector(
-                    selector.TextSelectorConfig(
-                        type=selector.TextSelectorType.TEXT, multiline=True
-                    )
+        # Get current memory enabled state to conditionally show memory guidelines
+        current_memory_enabled = self.config_entry.options.get(CONST_ENABLE_MEMORY, True)
+
+        # Build base schema
+        schema_dict = {
+            vol.Required(
+                CONST_PROMPT_CONTEXT,
+                default=self.config_entry.options.get(CONST_PROMPT_CONTEXT),
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.TEXT, multiline=True
+                )
+            ),
+            vol.Required(
+                CONST_MODEL_ID,
+                default=self.config_entry.options.get(CONST_MODEL_ID),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=foundation_models),
+            ),
+            vol.Optional(
+                CONST_ENABLE_HA_CONTROL,
+                default=self.config_entry.options.get(
+                    CONST_ENABLE_HA_CONTROL, True
                 ),
-                vol.Required(
-                    CONST_MODEL_ID,
-                    default=self.config_entry.options.get(CONST_MODEL_ID),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=foundation_models),
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONST_ENABLE_MEMORY,
+                default=current_memory_enabled,
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONST_MEMORY_STORAGE_PATH,
+                default=self.config_entry.options.get(
+                    CONST_MEMORY_STORAGE_PATH, ""
                 ),
-                vol.Optional(
-                    CONST_ENABLE_HA_CONTROL,
-                    default=self.config_entry.options.get(
-                        CONST_ENABLE_HA_CONTROL, True
-                    ),
-                ): selector.BooleanSelector(),
-                vol.Optional(
-                    CONST_ENABLE_MEMORY,
-                    default=self.config_entry.options.get(CONST_ENABLE_MEMORY, True),
-                ): selector.BooleanSelector(),
-                vol.Optional(
-                    CONST_MEMORY_STORAGE_PATH,
-                    default=self.config_entry.options.get(
-                        CONST_MEMORY_STORAGE_PATH, ""
-                    ),
-                ): selector.TextSelector(
-                    selector.TextSelectorConfig(
-                        type=selector.TextSelectorType.TEXT, multiline=False
-                    )
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.TEXT, multiline=False
+                )
+            ),
+        }
+
+        # Add memory guidelines field only if memory is enabled
+        if current_memory_enabled:
+            schema_dict[vol.Optional(
+                CONST_MEMORY_GUIDELINES,
+                default=self.config_entry.options.get(
+                    CONST_MEMORY_GUIDELINES, DEFAULT_MEMORY_GUIDELINES
                 ),
-            }
-        )
+            )] = selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.TEXT, multiline=True
+                )
+            )
+
+        options_schema = vol.Schema(schema_dict)
 
         if user_input is not None:
             return self.async_create_entry(

@@ -46,6 +46,7 @@
                 "data": {
                     "enable_ha_control": "Enable Home Assistant Control",
                     "enable_memory": "Enable Long-term Memory",
+                    "memory_guidelines": "Memory Storage Guidelines",
                     "memory_storage_path": "Memory Storage Path",
                     "model_id": "Model",
                     "prompt_context": "Prompt Context"
@@ -53,6 +54,7 @@
                 "data_description": {
                     "enable_ha_control": "Enable Home Assistant device control through the conversation agent. Allows the agent to turn devices on/off, query states, and control your smart home.",
                     "enable_memory": "Enable semantic memory with Mem0 for personalized, context-aware conversations that persist across sessions.",
+                    "memory_guidelines": "Custom instructions for the agent about what to store in memory and what to ignore. This helps control memory storage behavior and supports different languages. Only shown when memory is enabled.",
                     "memory_storage_path": "Custom path for storing memory data (leave empty for default: /config/.storage/bedrock_agent_memory). Path must be writable."
                 }
             }

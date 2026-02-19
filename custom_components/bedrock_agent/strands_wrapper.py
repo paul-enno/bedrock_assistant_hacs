@@ -66,6 +66,7 @@ class StrandsAgentWrapper:
         enable_memory: bool = True,
         enable_ha_control: bool = True,
         memory_storage_path: str = "",
+        memory_guidelines: str = "",
         user_id: str | None = None,
     ) -> None:
         """Initialize the wrapper.
@@ -79,6 +80,7 @@ class StrandsAgentWrapper:
             enable_memory: Enable long-term memory with mem0
             enable_ha_control: Enable Home Assistant device control
             memory_storage_path: Custom path for memory storage (empty = use default)
+            memory_guidelines: Custom guidelines for memory storage (empty = use default)
             user_id: User ID for memory isolation
         """
         self.hass = hass
@@ -87,6 +89,7 @@ class StrandsAgentWrapper:
         self.model_id = model_id
         self.enable_memory = enable_memory and _mem0_available
         self.enable_ha_control = enable_ha_control
+        self.memory_guidelines = memory_guidelines
         self.user_id = user_id or "default_user"
 
         # Set memory storage path - use default if not provided
@@ -174,13 +177,17 @@ class StrandsAgentWrapper:
             os.environ["MEM0_EMBEDDER_PROVIDER"] = "aws_bedrock"
 
         if not os.environ.get("MEM0_EMBEDDER_MODEL"):
-            os.environ["MEM0_EMBEDDER_MODEL"] = "amazon.titan-embed-text-v2:0"
+            # Use Titan Embed Text v1 which is more widely available
+            os.environ["MEM0_EMBEDDER_MODEL"] = "amazon.titan-embed-text-v1"
 
         if not os.environ.get("MEM0_LLM_PROVIDER"):
             os.environ["MEM0_LLM_PROVIDER"] = "aws_bedrock"
 
         if not os.environ.get("MEM0_LLM_MODEL"):
-            os.environ["MEM0_LLM_MODEL"] = "anthropic.claude-3-5-haiku-20241022-v1:0"
+            # Use the same model as configured for the main agent
+            # This ensures consistency and that the model is available
+            os.environ["MEM0_LLM_MODEL"] = self.model_id
+            _LOGGER.debug("Using configured model for mem0 LLM: %s", self.model_id)
 
         # Configure FAISS storage path
         if not os.environ.get("MEM0_VECTOR_STORE_PATH"):
@@ -206,16 +213,29 @@ class StrandsAgentWrapper:
             self.memory_storage_path,
         )
 
-    def _create_bedrock_model(self) -> BedrockModel:
-        """Create a Bedrock model instance."""
-        session = self.aws_factory.create_boto3_session()
-        return BedrockModel(
-            model_id=self.model_id,
-            boto_session=session,
-            streaming=False,
+        _LOGGER.info(
+            "Note: If you encounter model availability errors, you can override mem0 models by setting "
+            "environment variables: MEM0_EMBEDDER_MODEL and MEM0_LLM_MODEL"
         )
 
-    def _get_session_manager(self, user_id: str) -> FileSessionManager:
+    async def _create_bedrock_model(self) -> BedrockModel:
+        """Create a Bedrock model instance.
+
+        Runs in executor because BedrockModel initialization loads botocore
+        service definitions from disk (blocking I/O).
+        """
+        def _create_model() -> BedrockModel:
+            """Create model in executor."""
+            session = self.aws_factory.create_boto3_session()
+            return BedrockModel(
+                model_id=self.model_id,
+                boto_session=session,
+                streaming=False,
+            )
+
+        return await self.hass.async_add_executor_job(_create_model)
+
+    async def _get_session_manager(self, user_id: str) -> FileSessionManager:
         """Get or create a FileSessionManager for a specific user.
 
         Each user gets their own session identified by user_id.
@@ -242,17 +262,24 @@ class StrandsAgentWrapper:
                 self.session_storage_path,
             )
 
-            # Create the session manager with user_id as session_id
-            session_manager = FileSessionManager(
-                session_id=user_id,
-                storage_dir=self.session_storage_path,
+            # Create the session manager in executor to avoid blocking I/O
+            # FileSessionManager reads session.json during initialization
+            def _create_session_manager() -> FileSessionManager:
+                """Create session manager in executor."""
+                return FileSessionManager(
+                    session_id=user_id,
+                    storage_dir=self.session_storage_path,
+                )
+
+            session_manager = await self.hass.async_add_executor_job(
+                _create_session_manager
             )
 
             self._session_managers[user_id] = session_manager
 
         return self._session_managers[user_id]
 
-    def get_simple_agent(self, model_id: str | None = None) -> Agent:
+    async def get_simple_agent(self, model_id: str | None = None) -> Agent:
         """Get or create a simple agent without session persistence.
 
         This is used for one-off tasks like the cognitive task service.
@@ -263,19 +290,14 @@ class StrandsAgentWrapper:
         Returns:
             Agent instance without session persistence
         """
-        # Use provided model_id or fall back to wrapper's model_id
-        effective_model_id = model_id or self.model_id
-
         # Create a simple agent without session persistence
-        bedrock_model = self._create_bedrock_model()
+        bedrock_model = await self._create_bedrock_model()
 
-        agent = Agent(
+        return Agent(
             model=bedrock_model,
             system_prompt=self.system_prompt or "",
             callback_handler=None,
         )
-
-        return agent
 
     def _get_enhanced_system_prompt(
         self, user_id: str | None = None, has_ha_control: bool = False
@@ -296,7 +318,9 @@ class StrandsAgentWrapper:
         # Add memory instructions if enabled
         if self.enable_memory:
             effective_user_id = user_id or self.user_id
-            enhancements.append(f"""
+
+            # Build memory instructions
+            memory_instruction = f"""
 
 You have access to a long-term memory system that persists across conversations. Use the memory tool to:
 - Store important information about the user (preferences, facts, context)
@@ -304,8 +328,13 @@ You have access to a long-term memory system that persists across conversations.
 - Remember user preferences and past interactions
 
 IMPORTANT: When using the memory tool, always use user_id="{effective_user_id}" to ensure memories are stored and retrieved for the correct user.
+"""
 
-When users share important information, proactively store it in memory. When answering questions, retrieve relevant memories to provide contextual, personalized responses.""")
+            # Add custom memory guidelines if provided
+            if self.memory_guidelines:
+                memory_instruction += f"\n{self.memory_guidelines}"
+
+            enhancements.append(memory_instruction)
 
         # Add Home Assistant control instructions if available
         if has_ha_control:
@@ -405,12 +434,12 @@ If you get an error about "Failed to call turn_on", the device might not support
             conversation_id,
         )
 
-        bedrock_model = self._create_bedrock_model()
+        bedrock_model = await self._create_bedrock_model()
 
         # Get or create session manager for this user
         # session_id = user_id, agent_id = user_id
         # This means all conversations for a user share the same persistent history
-        session_manager = self._get_session_manager(user_id)
+        session_manager = await self._get_session_manager(user_id)
 
         # Create conversation manager with sliding window (defaults to 40 messages)
         # This keeps only the last 40 interactions in the agent's context
@@ -440,20 +469,27 @@ If you get an error about "Failed to call turn_on", the device might not support
         # when the agent is created, and it loads existing messages from disk if they exist.
         # We do NOT need to manually load messages - the session manager handles this.
         # All conversations for this user will share the same message history.
+        #
+        # NOTE: Agent creation is done in executor because FileSessionManager does blocking
+        # I/O operations (os.listdir) during initialization to load existing messages.
         system_prompt = self._get_enhanced_system_prompt(
             user_id,
             has_ha_control=bool(self.enable_ha_control and self.apis and llm_context),
         )
 
-        agent = Agent(
-            agent_id=user_id,  # Use user_id as agent_id for persistent history
-            model=bedrock_model,
-            tools=agent_tools,
-            system_prompt=system_prompt,
-            session_manager=session_manager,
-            conversation_manager=conversation_manager,
-            callback_handler=None,
-        )
+        def _create_agent() -> Agent:
+            """Create agent in executor to avoid blocking I/O."""
+            return Agent(
+                agent_id=user_id,  # Use user_id as agent_id for persistent history
+                model=bedrock_model,
+                tools=agent_tools,
+                system_prompt=system_prompt,
+                session_manager=session_manager,
+                conversation_manager=conversation_manager,
+                callback_handler=None,
+            )
+
+        agent = await self.hass.async_add_executor_job(_create_agent)
 
         # Cache the agent by user_id only (not conversation_id)
         self._agent_cache[cache_key] = agent
@@ -580,7 +616,7 @@ If you get an error about "Failed to call turn_on", the device might not support
             else:
                 # Create default agent without session persistence if not cached
                 if self.agent is None:
-                    bedrock_model = self._create_bedrock_model()
+                    bedrock_model = await self._create_bedrock_model()
 
                     # Build tools list for default agent
                     agent_tools = []
@@ -604,8 +640,45 @@ If you get an error about "Failed to call turn_on", the device might not support
                 _LOGGER.debug("Using agent without session persistence")
 
             # Call the agent asynchronously using invoke_async
-            # This keeps us in the same event loop as Home Assistant
-            response = await agent.invoke_async(prompt)
+            # For agents with memory (mem0), run in executor to avoid blocking
+            # Mem0 operations can be slow and may block the event loop
+            if self.enable_memory and conversation_id:
+                _LOGGER.debug("Running agent with memory in executor to avoid blocking")
+                try:
+                    response = await self.hass.async_add_executor_job(
+                        agent, prompt
+                    )
+                except ClientError as e:
+                    error_code = e.response.get("Error", {}).get("Code", "")
+                    error_msg = e.response.get("Error", {}).get("Message", "")
+
+                    # Handle specific Bedrock validation errors
+                    if error_code == "ValidationException" and "cannot be provided in the same turn" in error_msg:
+                        _LOGGER.warning(
+                            "Session history has invalid message structure. Clearing cache and retrying. "
+                            "This can happen after SDK updates or when restoring old sessions"
+                        )
+                        # Clear the problematic agent from cache
+                        if effective_user_id in self._agent_cache:
+                            del self._agent_cache[effective_user_id]
+                        if effective_user_id in self._session_managers:
+                            del self._session_managers[effective_user_id]
+
+                        # Create a fresh agent and retry
+                        agent = await self.get_agent_with_memory(
+                            conversation_id, effective_user_id, llm_context
+                        )
+                        response = await self.hass.async_add_executor_job(
+                            agent, prompt
+                        )
+                    else:
+                        raise
+                except Exception:
+                    _LOGGER.exception("Error during agent execution with memory")
+                    raise
+            else:
+                # This keeps us in the same event loop as Home Assistant
+                response = await agent.invoke_async(prompt)
 
             # Extract text from the response message
             # AgentResult.message.content is a list of ContentBlock objects

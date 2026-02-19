@@ -19,11 +19,13 @@ from .const import (
     CONST_ENABLE_MEMORY,
     CONST_KEY_ID,
     CONST_KEY_SECRET,
+    CONST_MEMORY_GUIDELINES,
     CONST_MEMORY_STORAGE_PATH,
     CONST_MODEL_ID,
     CONST_MODEL_LIST,
     CONST_PROMPT_CONTEXT,
     CONST_REGION,
+    DEFAULT_MEMORY_GUIDELINES,
 )
 from .strands_wrapper import StrandsAgentWrapper
 
@@ -62,6 +64,9 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             enable_memory=self.entry.options.get(CONST_ENABLE_MEMORY, True),
             enable_ha_control=self.entry.options.get(CONST_ENABLE_HA_CONTROL, True),
             memory_storage_path=self.entry.options.get(CONST_MEMORY_STORAGE_PATH, ""),
+            memory_guidelines=self.entry.options.get(
+                CONST_MEMORY_GUIDELINES, DEFAULT_MEMORY_GUIDELINES
+            ),
         )
 
     @property
