@@ -157,42 +157,36 @@ class StrandsAgentWrapper:
         Mem0 uses environment variables for AWS credentials and FAISS configuration.
         We set them here to ensure mem0 can access Bedrock for embeddings and LLM operations,
         and stores data in the configured location.
+        
+        IMPORTANT: We always override environment variables to ensure consistency
+        between dev and production environments.
         """
-        # Set AWS credentials if not already set
-        if not os.environ.get("AWS_ACCESS_KEY_ID"):
-            os.environ["AWS_ACCESS_KEY_ID"] = self.aws_factory.aws_access_key_id
-            _LOGGER.debug("Set AWS_ACCESS_KEY_ID for mem0")
+        # Always set AWS credentials (override any existing values)
+        os.environ["AWS_ACCESS_KEY_ID"] = self.aws_factory.aws_access_key_id
+        _LOGGER.debug("Set AWS_ACCESS_KEY_ID for mem0")
 
-        if not os.environ.get("AWS_SECRET_ACCESS_KEY"):
-            os.environ["AWS_SECRET_ACCESS_KEY"] = self.aws_factory.aws_secret_access_key
-            _LOGGER.debug("Set AWS_SECRET_ACCESS_KEY for mem0")
+        os.environ["AWS_SECRET_ACCESS_KEY"] = self.aws_factory.aws_secret_access_key
+        _LOGGER.debug("Set AWS_SECRET_ACCESS_KEY for mem0")
 
-        if not os.environ.get("AWS_REGION"):
-            os.environ["AWS_REGION"] = self.aws_factory.region_name
-            _LOGGER.debug("Set AWS_REGION for mem0: %s", self.aws_factory.region_name)
+        os.environ["AWS_REGION"] = self.aws_factory.region_name
+        _LOGGER.debug("Set AWS_REGION for mem0: %s", self.aws_factory.region_name)
 
-        # Configure mem0 to use Bedrock for embeddings and LLM
-        # These can be overridden by user if they set them explicitly
-        if not os.environ.get("MEM0_EMBEDDER_PROVIDER"):
-            os.environ["MEM0_EMBEDDER_PROVIDER"] = "aws_bedrock"
+        # Always configure mem0 to use Bedrock for embeddings and LLM
+        os.environ["MEM0_EMBEDDER_PROVIDER"] = "aws_bedrock"
 
-        if not os.environ.get("MEM0_EMBEDDER_MODEL"):
-            # Use Titan Embed Text v1 which is more widely available
-            os.environ["MEM0_EMBEDDER_MODEL"] = "amazon.titan-embed-text-v1"
+        # Use Titan Embed Text v1 which is more widely available
+        os.environ["MEM0_EMBEDDER_MODEL"] = "amazon.titan-embed-text-v1"
 
-        if not os.environ.get("MEM0_LLM_PROVIDER"):
-            os.environ["MEM0_LLM_PROVIDER"] = "aws_bedrock"
+        os.environ["MEM0_LLM_PROVIDER"] = "aws_bedrock"
 
-        if not os.environ.get("MEM0_LLM_MODEL"):
-            # Use the same model as configured for the main agent
-            # This ensures consistency and that the model is available
-            os.environ["MEM0_LLM_MODEL"] = self.model_id
-            _LOGGER.debug("Using configured model for mem0 LLM: %s", self.model_id)
+        # Use the same model as configured for the main agent
+        # This ensures consistency and that the model is available
+        os.environ["MEM0_LLM_MODEL"] = self.model_id
+        _LOGGER.debug("Using configured model for mem0 LLM: %s", self.model_id)
 
         # Configure FAISS storage path
-        if not os.environ.get("MEM0_VECTOR_STORE_PATH"):
-            os.environ["MEM0_VECTOR_STORE_PATH"] = self.memory_storage_path
-            _LOGGER.debug("Set MEM0_VECTOR_STORE_PATH: %s", self.memory_storage_path)
+        os.environ["MEM0_VECTOR_STORE_PATH"] = self.memory_storage_path
+        _LOGGER.debug("Set MEM0_VECTOR_STORE_PATH: %s", self.memory_storage_path)
 
         # Ensure the storage directory exists
         try:
@@ -214,8 +208,8 @@ class StrandsAgentWrapper:
         )
 
         _LOGGER.info(
-            "Note: If you encounter model availability errors, you can override mem0 models by setting "
-            "environment variables: MEM0_EMBEDDER_MODEL and MEM0_LLM_MODEL"
+            "Note: Mem0 environment variables are set from integration config. "
+            "If you need different models, update the integration configuration."
         )
 
     async def _create_bedrock_model(self) -> BedrockModel:
