@@ -43,20 +43,63 @@
   "options": {
     "step": {
       "init": {
+        "menu_options": {
+          "aws_config": "AWS Configuration",
+          "ai_config": "AI Configuration",
+          "memory_config": "Memory Configuration",
+          "tools_config": "Tools Configuration"
+        },
+        "title": "Configure Bedrock Agent"
+      },
+      "aws_config": {
         "data": {
-          "enable_ha_control": "Enable Home Assistant Control",
-          "enable_memory": "Enable Long-term Memory",
-          "memory_guidelines": "Memory Storage Guidelines",
-          "memory_storage_path": "Memory Storage Path",
-          "model_id": "Model",
-          "prompt_context": "Prompt Context"
+          "region": "AWS Region",
+          "key_id": "AWS Access Key ID",
+          "key_secret": "AWS Secret Access Key"
         },
         "data_description": {
-          "enable_ha_control": "Enable Home Assistant device control through the conversation agent. Allows the agent to turn devices on/off, query states, and control your smart home.",
+          "region": "The AWS region where Bedrock services will be accessed (e.g., us-east-1, eu-west-1). Different regions have different models available.",
+          "key_id": "Your AWS access key ID for authentication.",
+          "key_secret": "Your AWS secret access key for authentication. This will be stored securely."
+        },
+        "description": "Update AWS credentials and region. After saving, you'll need to verify/update the AI model for the new region.",
+        "title": "AWS Configuration"
+      },
+      "ai_config": {
+        "data": {
+          "model_id": "Model",
+          "prompt_context": "System Prompt"
+        },
+        "data_description": {
+          "model_id": "Select the AI model to use for conversations. Foundation models and inference profiles are available based on your AWS region. Verify this model is available in your region.",
+          "prompt_context": "System prompt that defines the agent's behavior and personality. This is sent with every conversation."
+        },
+        "description": "Configure the AI model and system prompt. The model list has been updated based on your AWS region. The integration will reload after saving.",
+        "title": "AI Configuration"
+      },
+      "memory_config": {
+        "data": {
+          "enable_memory": "Enable Long-term Memory",
+          "memory_storage_path": "Memory Storage Path",
+          "memory_guidelines": "Memory Storage Guidelines"
+        },
+        "data_description": {
           "enable_memory": "Enable semantic memory with Mem0 for personalized, context-aware conversations that persist across sessions.",
-          "memory_guidelines": "Custom instructions for the agent about what to store in memory and what to ignore. This helps control memory storage behavior and supports different languages. Only shown when memory is enabled.",
-          "memory_storage_path": "Custom path for storing memory data (leave empty for default: /config/.storage/bedrock_agent_memory). Path must be writable."
-        }
+          "memory_storage_path": "Custom path for storing memory data (leave empty for default: /config/.storage/bedrock_agent_memory). Path must be writable.",
+          "memory_guidelines": "Custom instructions for the agent about what to store in memory and what to ignore. This helps control memory storage behavior and supports different languages."
+        },
+        "description": "Configure memory settings. The integration will reload after saving.",
+        "title": "Memory Configuration"
+      },
+      "tools_config": {
+        "data": {
+          "enable_ha_control": "Enable Home Assistant Control"
+        },
+        "data_description": {
+          "enable_ha_control": "Enable Home Assistant device control through the conversation agent. Allows the agent to turn devices on/off, query states, and control your smart home."
+        },
+        "description": "Configure which tools the agent can use. The integration will reload after saving.",
+        "title": "Tools Configuration"
       }
     }
   },

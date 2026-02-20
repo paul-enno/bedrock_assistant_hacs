@@ -254,47 +254,144 @@ class InvalidAuth(HomeAssistantError):
 class OptionsFlowHandler(OptionsFlow):
     """Handle a options flow for Amazon Bedrock Agent."""
 
-    # def __init__(self, config_entry: ConfigEntry) -> None:
-    #     """Initialize options flow."""
-    #     self.config_entry = config_entry
-
     def __init__(self) -> None:
         """Initialize options flow."""
-        self._conf_app_id: str | None = None
+        self._options: dict[str, Any] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Optionsflow to edit model configuration."""
+        """Manage the options - show menu."""
+        # If user selected "done", close the flow
+        if user_input is not None and user_input.get("next_step_id") == "done":
+            return self.async_create_entry(title="", data=self.config_entry.options)
+        
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["aws_config", "ai_config", "memory_config", "tools_config"],
+        )
+
+    async def async_step_aws_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure AWS credentials and region."""
+        errors: dict[str, str] = {}
+        
+        if user_input is not None:
+            # Validate the new credentials
+            try:
+                await validate_input(self.hass, user_input)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except HomeAssistantError:
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                # Update config entry data with new credentials
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data={
+                        **self.config_entry.data,
+                        CONST_KEY_ID: user_input[CONST_KEY_ID],
+                        CONST_KEY_SECRET: user_input[CONST_KEY_SECRET],
+                        CONST_REGION: user_input[CONST_REGION],
+                    },
+                )
+                
+                # Reload the integration to apply new credentials
+                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                
+                # Navigate to AI config to ensure model is valid for new region
+                return await self.async_step_ai_config()
+
+        # Get current values
+        current_key_id = self.config_entry.data.get(CONST_KEY_ID, "")
+        current_region = self.config_entry.data.get(CONST_REGION, "")
+
+        # Region first, then credentials
+        aws_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONST_REGION,
+                    default=current_region,
+                ): str,
+                vol.Required(
+                    CONST_KEY_ID,
+                    default=current_key_id,
+                ): str,
+                vol.Required(
+                    CONST_KEY_SECRET,
+                ): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="aws_config",
+            data_schema=aws_schema,
+            errors=errors,
+            description_placeholders={
+                "aws_info": "Update AWS credentials and region. After saving, you'll need to verify/update the AI model for the new region."
+            },
+        )
+
+    async def async_step_ai_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure AI model settings."""
+        if user_input is not None:
+            # Update options with AI config
+            self._options.update(user_input)
+            # Save and return to menu
+            return await self._update_options()
+
         foundation_models = await get_foundation_models_select_option_dict(
             self.hass, self.config_entry.data.copy()
         )
 
-        # Get current memory enabled state to conditionally show memory guidelines
+        ai_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONST_MODEL_ID,
+                    default=self.config_entry.options.get(CONST_MODEL_ID),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=foundation_models),
+                ),
+                vol.Required(
+                    CONST_PROMPT_CONTEXT,
+                    default=self.config_entry.options.get(CONST_PROMPT_CONTEXT),
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.TEXT, multiline=True
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="ai_config",
+            data_schema=ai_schema,
+            description_placeholders={
+                "model_info": "Select the AI model to use for conversations. The model list has been updated based on your AWS region."
+            },
+        )
+
+    async def async_step_memory_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure memory settings."""
+        if user_input is not None:
+            # Update options with memory config
+            self._options.update(user_input)
+            # Save and return to menu
+            return await self._update_options()
+
+        # Get current memory enabled state
         current_memory_enabled = self.config_entry.options.get(CONST_ENABLE_MEMORY, True)
 
-        # Build base schema
+        # Build schema
         schema_dict = {
-            vol.Required(
-                CONST_PROMPT_CONTEXT,
-                default=self.config_entry.options.get(CONST_PROMPT_CONTEXT),
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(
-                    type=selector.TextSelectorType.TEXT, multiline=True
-                )
-            ),
-            vol.Required(
-                CONST_MODEL_ID,
-                default=self.config_entry.options.get(CONST_MODEL_ID),
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=foundation_models),
-            ),
-            vol.Optional(
-                CONST_ENABLE_HA_CONTROL,
-                default=self.config_entry.options.get(
-                    CONST_ENABLE_HA_CONTROL, True
-                ),
-            ): selector.BooleanSelector(),
             vol.Optional(
                 CONST_ENABLE_MEMORY,
                 default=current_memory_enabled,
@@ -324,11 +421,60 @@ class OptionsFlowHandler(OptionsFlow):
                 )
             )
 
-        options_schema = vol.Schema(schema_dict)
+        memory_schema = vol.Schema(schema_dict)
 
+        return self.async_show_form(
+            step_id="memory_config",
+            data_schema=memory_schema,
+            description_placeholders={
+                "memory_info": "Configure memory and enhancement settings"
+            },
+        )
+
+    async def async_step_tools_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure tool settings."""
         if user_input is not None:
-            return self.async_create_entry(
-                title=self.config_entry.title, data=user_input
-            )
+            # Update options with tools config
+            self._options.update(user_input)
+            # Save and return to menu
+            return await self._update_options()
 
-        return self.async_show_form(step_id="init", data_schema=options_schema)
+        tools_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONST_ENABLE_HA_CONTROL,
+                    default=self.config_entry.options.get(
+                        CONST_ENABLE_HA_CONTROL, True
+                    ),
+                ): selector.BooleanSelector(),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="tools_config",
+            data_schema=tools_schema,
+            description_placeholders={
+                "tools_info": "Enable or disable Home Assistant control tools"
+            },
+        )
+
+    async def _update_options(self) -> ConfigFlowResult:
+        """Update config entry options and return to menu."""
+        # Merge current options with new options
+        new_options = {**self.config_entry.options, **self._options}
+        
+        # Update the config entry
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, options=new_options
+        )
+        
+        # Reload the integration to apply new options
+        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+        
+        # Clear the temporary options
+        self._options = {}
+        
+        # Return to menu so user can configure other sections
+        return await self.async_step_init()
